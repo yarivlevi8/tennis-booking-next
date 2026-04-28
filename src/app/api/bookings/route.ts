@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  createBookingInDb,
+  DuplicateBookingError,
+  getBookedTimesForDate,
+} from "@/lib/bookingsRepository";
+import {
   isAllowedTrainingType,
   isAvailableSlot,
   isValidBookingDate,
@@ -59,19 +64,31 @@ export async function POST(request: Request) {
   }
 
   if (!isAvailableSlot(date, time)) {
-    return jsonError("Selected slot is not available");
+    return jsonError("Selected slot is not available", 409);
   }
 
-  // TODO: Persist booking in Neon/Postgres once persistence is added.
-  // TODO: Enforce DB-level double booking protection with a unique constraint.
-  // TODO: Validate coach availability with Google Calendar FreeBusy before confirming.
-  // TODO: Create the coach Google Calendar event after persistence succeeds.
-  return NextResponse.json({
-    date,
-    time,
-    trainingType,
-    fullName,
-    phone,
-    notes,
-  });
+  try {
+    const bookedTimes = await getBookedTimesForDate(date);
+
+    if (bookedTimes.includes(time)) {
+      return jsonError("Selected slot is not available", 409);
+    }
+
+    return NextResponse.json(
+      await createBookingInDb({
+        date,
+        time,
+        trainingType,
+        fullName,
+        phone,
+        notes,
+      }),
+    );
+  } catch (error) {
+    if (error instanceof DuplicateBookingError) {
+      return jsonError("Selected slot is not available", 409);
+    }
+
+    return jsonError("Failed to create booking", 500);
+  }
 }
