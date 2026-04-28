@@ -46,6 +46,7 @@ export interface AdminBooking {
 export interface GetBookingsOptions {
   status?: BookingStatus;
   date?: string;
+  q?: string;
 }
 
 export type UpdateBookingStatusResult =
@@ -100,6 +101,30 @@ function normalizeBookingRow(row: BookingRow): AdminBooking {
   };
 }
 
+function normalizeSearchQuery(value: string | undefined) {
+  const trimmedValue = value?.trim();
+
+  return trimmedValue ? trimmedValue : null;
+}
+
+function normalizePhoneSearchQuery(value: string | null) {
+  const normalizedValue = value?.replace(/\D/g, "") ?? "";
+
+  return normalizedValue || null;
+}
+
+function toLocalPhoneSearchQuery(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("972") && value.length > 3) {
+    return `0${value.slice(3)}`;
+  }
+
+  return value;
+}
+
 export function isBookingStatus(value: unknown): value is BookingStatus {
   return value === "confirmed" || value === "cancelled";
 }
@@ -122,6 +147,9 @@ export async function getBookings(
   const sql = getSqlClient();
   const status = options.status ?? null;
   const date = options.date ?? null;
+  const searchQuery = normalizeSearchQuery(options.q);
+  const phoneSearchQuery = normalizePhoneSearchQuery(searchQuery);
+  const localPhoneSearchQuery = toLocalPhoneSearchQuery(phoneSearchQuery);
   const rows = (await sql`
     SELECT
       id::text AS id,
@@ -137,6 +165,25 @@ export async function getBookings(
     FROM bookings
     WHERE (${status}::text IS NULL OR status = ${status})
       AND (${date}::date IS NULL OR booking_date = ${date}::date)
+      AND (
+        ${searchQuery}::text IS NULL
+        OR full_name ILIKE '%' || ${searchQuery} || '%'
+        OR phone ILIKE '%' || ${searchQuery} || '%'
+        OR (
+          ${phoneSearchQuery}::text IS NOT NULL
+          AND regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || ${phoneSearchQuery} || '%'
+        )
+        OR (
+          ${localPhoneSearchQuery}::text IS NOT NULL
+          AND (
+            CASE
+              WHEN regexp_replace(phone, '[^0-9]', '', 'g') LIKE '972%'
+                THEN '0' || substring(regexp_replace(phone, '[^0-9]', '', 'g') from 4)
+              ELSE regexp_replace(phone, '[^0-9]', '', 'g')
+            END
+          ) LIKE '%' || ${localPhoneSearchQuery} || '%'
+        )
+      )
     ORDER BY booking_date ASC, booking_time ASC, created_at DESC
   `) as BookingRow[];
 

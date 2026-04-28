@@ -33,6 +33,7 @@ export async function GET(request: Request) {
   const searchParams = new URL(request.url).searchParams;
   const status = searchParams.get("status");
   const date = searchParams.get("date");
+  const q = searchParams.get("q");
 
   if (status !== null && !isBookingStatus(status)) {
     return jsonError("Invalid status");
@@ -47,6 +48,7 @@ export async function GET(request: Request) {
       bookings: await getBookings({
         status: status ?? undefined,
         date: date ?? undefined,
+        q: q ?? undefined,
       }),
     });
   } catch {

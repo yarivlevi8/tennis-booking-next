@@ -2,6 +2,7 @@ import {
   trainingTypeLabels,
   type BookingConfirmationData,
 } from "@/types/booking";
+import { TRAINING_LOCATION } from "@/config/bookingConfig";
 import {
   buildGoogleCalendarUrl,
   downloadIcsFile,
@@ -39,6 +40,10 @@ export function BookingConfirmation({
         <div>
           <dt>סוג אימון</dt>
           <dd>{trainingTypeLabels[confirmation.trainingType]}</dd>
+        </div>
+        <div>
+          <dt>מיקום האימון</dt>
+          <dd>{TRAINING_LOCATION}</dd>
         </div>
         <div>
           <dt>שם מלא</dt>

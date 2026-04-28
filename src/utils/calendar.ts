@@ -2,11 +2,12 @@ import {
   trainingTypeLabels,
   type BookingConfirmationData,
 } from "@/types/booking";
-
-const CALENDAR_TIME_ZONE = "Asia/Jerusalem";
-const EVENT_TITLE = "אימון טניס";
-const EVENT_LOCATION = "מגרש טניס";
-const EVENT_DURATION_MINUTES = 60;
+import {
+  BOOKING_DURATION_MINUTES,
+  BOOKING_EVENT_TITLE,
+  BOOKING_TIMEZONE,
+  TRAINING_LOCATION,
+} from "@/config/bookingConfig";
 
 interface CalendarDateTimeParts {
   year: number;
@@ -80,7 +81,7 @@ function formatUtcDateTime(date: Date) {
 
 function getEventTimes(confirmation: BookingConfirmationData) {
   const start = parseBookingDateTime(confirmation);
-  const end = addWallTimeMinutes(start, EVENT_DURATION_MINUTES);
+  const end = addWallTimeMinutes(start, BOOKING_DURATION_MINUTES);
 
   return {
     start: formatCalendarDateTime(start),
@@ -158,11 +159,11 @@ export function buildGoogleCalendarUrl(
   const url = new URL("https://calendar.google.com/calendar/render");
 
   url.searchParams.set("action", "TEMPLATE");
-  url.searchParams.set("text", EVENT_TITLE);
+  url.searchParams.set("text", BOOKING_EVENT_TITLE);
   url.searchParams.set("dates", `${start}/${end}`);
   url.searchParams.set("details", createEventDescription(confirmation));
-  url.searchParams.set("location", EVENT_LOCATION);
-  url.searchParams.set("ctz", CALENDAR_TIME_ZONE);
+  url.searchParams.set("location", TRAINING_LOCATION);
+  url.searchParams.set("ctz", BOOKING_TIMEZONE);
 
   return url.toString();
 }
@@ -175,15 +176,15 @@ export function createIcsContent(confirmation: BookingConfirmationData) {
     "PRODID:-//Tennis Booking MVP//HE",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    `X-WR-TIMEZONE:${CALENDAR_TIME_ZONE}`,
+    `X-WR-TIMEZONE:${BOOKING_TIMEZONE}`,
     "BEGIN:VEVENT",
     `UID:${createIcsUid(confirmation)}`,
     `DTSTAMP:${formatUtcDateTime(new Date())}`,
-    `DTSTART;TZID=${CALENDAR_TIME_ZONE}:${start}`,
-    `DTEND;TZID=${CALENDAR_TIME_ZONE}:${end}`,
-    `SUMMARY:${escapeIcsText(EVENT_TITLE)}`,
+    `DTSTART;TZID=${BOOKING_TIMEZONE}:${start}`,
+    `DTEND;TZID=${BOOKING_TIMEZONE}:${end}`,
+    `SUMMARY:${escapeIcsText(BOOKING_EVENT_TITLE)}`,
     `DESCRIPTION:${escapeIcsText(createEventDescription(confirmation))}`,
-    `LOCATION:${escapeIcsText(EVENT_LOCATION)}`,
+    `LOCATION:${escapeIcsText(TRAINING_LOCATION)}`,
     "END:VEVENT",
     "END:VCALENDAR",
     "",
