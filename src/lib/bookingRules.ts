@@ -1,6 +1,8 @@
 import type { TimeSlot, TrainingType } from "@/types/booking";
 
 export const DEFAULT_WORKING_HOUR_TIMES = [
+  "06:00",
+  "07:00",
   "08:00",
   "09:00",
   "10:00",
