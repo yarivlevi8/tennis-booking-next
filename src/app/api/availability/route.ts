@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getBlockedTimesForDate } from "@/lib/availabilityRepository";
 import { getBookedTimesForDate } from "@/lib/bookingsRepository";
 import {
   getAvailableSlotsForDate,
@@ -19,11 +20,15 @@ export async function GET(request: Request) {
   const baseSlots = getAvailableSlotsForDate(date);
 
   try {
-    const bookedTimes = new Set(await getBookedTimesForDate(date));
+    const [blockedTimes, bookedTimes] = await Promise.all([
+      getBlockedTimesForDate(date),
+      getBookedTimesForDate(date),
+    ]);
+    const unavailableTimes = new Set([...blockedTimes, ...bookedTimes]);
 
     return NextResponse.json({
       date,
-      slots: baseSlots.filter((slot) => !bookedTimes.has(slot.time)),
+      slots: baseSlots.filter((slot) => !unavailableTimes.has(slot.time)),
     });
   } catch {
     return jsonError("Failed to load availability", 500);

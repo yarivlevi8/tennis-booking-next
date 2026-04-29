@@ -1,7 +1,17 @@
 import type { TimeSlot, TrainingType } from "@/types/booking";
 
-const FIRST_FRIDAY_SLOTS = ["08:00", "09:00", "10:00", "12:00"];
-const SECOND_FRIDAY_SLOTS = ["09:00", "11:00", "13:00"];
+export const DEFAULT_WORKING_HOUR_TIMES = [
+  "08:00",
+  "09:00",
+  "10:00",
+  "11:00",
+  "12:00",
+  "13:00",
+  "14:00",
+  "15:00",
+  "16:00",
+];
+
 const FRIDAY_DAY_INDEX = 5;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -79,15 +89,15 @@ export function getNextTwoFridayDateStrings(referenceDate = new Date()) {
   return [toStableDateString(firstFriday), toStableDateString(secondFriday)];
 }
 
+export function getDefaultWorkingHourSlots() {
+  return toTimeSlots(DEFAULT_WORKING_HOUR_TIMES);
+}
+
 export function getAvailableSlotsForDate(date: string) {
-  const [firstFriday, secondFriday] = getNextTwoFridayDateStrings();
+  const upcomingFridayDates = getNextTwoFridayDateStrings();
 
-  if (date === firstFriday) {
-    return toTimeSlots(FIRST_FRIDAY_SLOTS);
-  }
-
-  if (date === secondFriday) {
-    return toTimeSlots(SECOND_FRIDAY_SLOTS);
+  if (upcomingFridayDates.includes(date)) {
+    return getDefaultWorkingHourSlots();
   }
 
   return [];
@@ -95,6 +105,10 @@ export function getAvailableSlotsForDate(date: string) {
 
 export function isValidTime(time: string) {
   return TIME_PATTERN.test(time);
+}
+
+export function isDefaultWorkingHourTime(time: string) {
+  return DEFAULT_WORKING_HOUR_TIMES.includes(time);
 }
 
 export function isAllowedTrainingType(

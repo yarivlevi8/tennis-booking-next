@@ -2,6 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  AdminAvailabilityResponse,
+  AdminAvailabilitySlot,
+  AdminAvailabilitySlotState,
   AdminBooking,
   AdminBookingsResponse,
   AdminBookingStatus,
@@ -16,11 +19,17 @@ type Notice = { type: "success" | "error"; text: string };
 type LoadBookingsOptions = {
   keepNotice?: boolean;
 };
+type LoadAvailabilityOptions = {
+  keepNotice?: boolean;
+};
 
 const LOGIN_INVALID_ERROR = "שם המשתמש או הסיסמה שגויים";
 const GENERIC_ERROR = "משהו השתבש. כדאי לנסות שוב.";
 const SESSION_EXPIRED_MESSAGE = "החיבור לניהול פג. יש להתחבר מחדש.";
 const UPDATE_SUCCESS_MESSAGE = "ההזמנה עודכנה בהצלחה";
+const AVAILABILITY_UPDATE_SUCCESS_MESSAGE = "שעות העבודה עודכנו";
+const CANNOT_CLOSE_BOOKED_SLOT_MESSAGE =
+  "לא ניתן לסגור שעה שכבר קיימת בה הזמנה";
 const RESTORE_CONFLICT_MESSAGE =
   "לא ניתן להחזיר את ההזמנה, השעה כבר תפוסה";
 const FRIDAY_DAY_INDEX = 5;
@@ -35,6 +44,12 @@ const trainingTypeLabels: Record<AdminBooking["trainingType"], string> = {
 const statusLabels: Record<AdminBookingStatus, string> = {
   confirmed: "מאושר",
   cancelled: "מבוטל",
+};
+
+const availabilityStateLabels: Record<AdminAvailabilitySlotState, string> = {
+  open: "פתוח",
+  blocked: "סגור",
+  booked: "תפוס",
 };
 
 function formatDate(date: string) {
@@ -65,6 +80,16 @@ function isBookingsResponse(value: unknown): value is AdminBookingsResponse {
     typeof value === "object" &&
     value !== null &&
     Array.isArray((value as AdminBookingsResponse).bookings)
+  );
+}
+
+function isAvailabilityResponse(
+  value: unknown,
+): value is AdminAvailabilityResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as AdminAvailabilityResponse).slots)
   );
 }
 
@@ -198,6 +223,9 @@ function buildBookingsUrl(
 export function AdminPage() {
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
+  const [availabilitySlots, setAvailabilitySlots] = useState<
+    AdminAvailabilitySlot[]
+  >([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [dateFilter, setDateFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -211,9 +239,13 @@ export function AdminPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(
     null,
   );
+  const [updatingAvailabilityTime, setUpdatingAvailabilityTime] = useState<
+    string | null
+  >(null);
 
   const bookingsUrl = useMemo(
     () => buildBookingsUrl(statusFilter, dateFilter, debouncedSearchQuery),
@@ -232,6 +264,7 @@ export function AdminPage() {
   const returnToLogin = useCallback((message = SESSION_EXPIRED_MESSAGE) => {
     setAuthState("unauthenticated");
     setBookings([]);
+    setAvailabilitySlots([]);
     setNotice(null);
     setLoginError("");
     setAuthMessage(message);
@@ -333,11 +366,70 @@ export function AdminPage() {
     [authState, bookingsUrl, returnToLogin],
   );
 
+  const loadAvailability = useCallback(
+    async (options: LoadAvailabilityOptions = {}) => {
+      if (authState !== "authenticated") {
+        return;
+      }
+
+      if (!dateFilter) {
+        setAvailabilitySlots([]);
+        return;
+      }
+
+      if (!options.keepNotice) {
+        setNotice(null);
+      }
+
+      setIsLoadingAvailability(true);
+
+      try {
+        const response = await fetch(
+          `/api/admin/availability?date=${encodeURIComponent(dateFilter)}`,
+          {
+            headers: {
+              Accept: "application/json",
+            },
+            cache: "no-store",
+            credentials: "same-origin",
+          },
+        );
+
+        if (response.status === 401) {
+          returnToLogin();
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error("Failed to load availability");
+        }
+
+        const data = (await response.json()) as unknown;
+
+        setAvailabilitySlots(isAvailabilityResponse(data) ? data.slots : []);
+      } catch {
+        setNotice({ type: "error", text: GENERIC_ERROR });
+      } finally {
+        setIsLoadingAvailability(false);
+      }
+    },
+    [authState, dateFilter, returnToLogin],
+  );
+
   useEffect(() => {
     if (authState === "authenticated") {
       void loadBookings();
     }
   }, [authState, loadBookings]);
+
+  useEffect(() => {
+    if (authState === "authenticated" && dateFilter) {
+      void loadAvailability();
+      return;
+    }
+
+    setAvailabilitySlots([]);
+  }, [authState, dateFilter, loadAvailability]);
 
   function handleCalendarDateSelect(dateString: string) {
     const selectedDate = parseStableDateString(dateString);
@@ -352,6 +444,8 @@ export function AdminPage() {
 
   function handleClearDateFilter() {
     setDateFilter("");
+    setAvailabilitySlots([]);
+    setUpdatingAvailabilityTime(null);
   }
 
   function handleCalendarMonthChange(monthsToAdd: number) {
@@ -361,6 +455,14 @@ export function AdminPage() {
   function handleClearSearch() {
     setSearchInput("");
     setDebouncedSearchQuery("");
+  }
+
+  async function handleRefreshAdminData() {
+    await loadBookings();
+
+    if (dateFilter) {
+      await loadAvailability({ keepNotice: true });
+    }
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -397,6 +499,7 @@ export function AdminPage() {
 
       form.reset();
       setBookings([]);
+      setAvailabilitySlots([]);
       setNotice(null);
       setAuthState("authenticated");
     } catch {
@@ -421,6 +524,7 @@ export function AdminPage() {
     } finally {
       setIsLoggingOut(false);
       setBookings([]);
+      setAvailabilitySlots([]);
       setStatusFilter("all");
       setDateFilter("");
       setSearchInput("");
@@ -469,10 +573,60 @@ export function AdminPage() {
 
       setNotice({ type: "success", text: UPDATE_SUCCESS_MESSAGE });
       await loadBookings({ keepNotice: true });
+
+      if (dateFilter && booking.date === dateFilter) {
+        await loadAvailability({ keepNotice: true });
+      }
     } catch {
       setNotice({ type: "error", text: GENERIC_ERROR });
     } finally {
       setUpdatingBookingId(null);
+    }
+  }
+
+  async function handleAvailabilityChange(
+    slot: AdminAvailabilitySlot,
+    isOpen: boolean,
+  ) {
+    setUpdatingAvailabilityTime(slot.time);
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/admin/availability", {
+        method: "PATCH",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          date: dateFilter,
+          time: slot.time,
+          isOpen,
+        }),
+        credentials: "same-origin",
+      });
+
+      if (response.status === 401) {
+        returnToLogin();
+        return;
+      }
+
+      if (response.status === 409) {
+        setNotice({ type: "error", text: CANNOT_CLOSE_BOOKED_SLOT_MESSAGE });
+        await loadAvailability({ keepNotice: true });
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to update availability");
+      }
+
+      setNotice({ type: "success", text: AVAILABILITY_UPDATE_SUCCESS_MESSAGE });
+      await loadAvailability({ keepNotice: true });
+    } catch {
+      setNotice({ type: "error", text: GENERIC_ERROR });
+    } finally {
+      setUpdatingAvailabilityTime(null);
     }
   }
 
@@ -563,8 +717,13 @@ export function AdminPage() {
             <button
               className={styles.secondaryButton}
               type="button"
-              onClick={() => void loadBookings()}
-              disabled={isLoadingBookings || updatingBookingId !== null}
+              onClick={() => void handleRefreshAdminData()}
+              disabled={
+                isLoadingBookings ||
+                isLoadingAvailability ||
+                updatingBookingId !== null ||
+                updatingAvailabilityTime !== null
+              }
             >
               רענון
             </button>
@@ -738,6 +897,86 @@ export function AdminPage() {
             {notice.text}
           </p>
         ) : null}
+
+        <section
+          className={styles.availabilityPanel}
+          aria-labelledby="admin-availability-title"
+        >
+          <header className={styles.availabilityHeader}>
+            <div>
+              <h2 id="admin-availability-title">ניהול שעות עבודה</h2>
+              <p>
+                {dateFilter
+                  ? `ניהול השעות עבור ${formatDate(dateFilter)}`
+                  : "יש לבחור יום שישי כדי לנהל שעות עבודה."}
+              </p>
+            </div>
+          </header>
+
+          {!dateFilter ? (
+            <p className={styles.emptyState}>
+              יש לבחור יום שישי כדי לנהל שעות עבודה.
+            </p>
+          ) : isLoadingAvailability ? (
+            <p className={styles.loadingText}>טוען שעות עבודה...</p>
+          ) : availabilitySlots.length === 0 ? (
+            <p className={styles.emptyState}>לא נמצאו שעות עבודה</p>
+          ) : (
+            <div className={styles.availabilitySlots}>
+              {availabilitySlots.map((slot) => {
+                const isUpdating = updatingAvailabilityTime === slot.time;
+                const isActionDisabled =
+                  updatingAvailabilityTime !== null || isLoadingAvailability;
+
+                return (
+                  <article
+                    className={styles.availabilitySlot}
+                    data-state={slot.state}
+                    key={slot.time}
+                  >
+                    <div className={styles.availabilitySlotInfo}>
+                      <strong>{slot.time}</strong>
+                      <span
+                        className={styles.availabilityStateBadge}
+                        data-state={slot.state}
+                      >
+                        {availabilityStateLabels[slot.state]}
+                      </span>
+                    </div>
+
+                    {slot.state === "booked" ? (
+                      <p className={styles.availabilityHelper}>
+                        יש הזמנה קיימת
+                      </p>
+                    ) : (
+                      <button
+                        className={
+                          slot.state === "open"
+                            ? styles.dangerButton
+                            : styles.secondaryButton
+                        }
+                        type="button"
+                        disabled={isActionDisabled}
+                        onClick={() =>
+                          void handleAvailabilityChange(
+                            slot,
+                            slot.state === "blocked",
+                          )
+                        }
+                      >
+                        {isUpdating
+                          ? "מעדכן..."
+                          : slot.state === "open"
+                            ? "סגירת שעה"
+                            : "פתיחת שעה"}
+                      </button>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         {isLoadingBookings ? (
           <p className={styles.loadingText}>טוען הזמנות...</p>

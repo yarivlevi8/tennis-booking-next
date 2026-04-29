@@ -1,6 +1,7 @@
 import type { TrainingType } from "@/types/booking";
 
 export type AdminBookingStatus = "confirmed" | "cancelled";
+export type AdminAvailabilitySlotState = "open" | "blocked" | "booked";
 
 export interface AdminBooking {
   id: string;
@@ -21,4 +22,14 @@ export interface AdminSessionResponse {
 
 export interface AdminBookingsResponse {
   bookings: AdminBooking[];
+}
+
+export interface AdminAvailabilitySlot {
+  time: string;
+  state: AdminAvailabilitySlotState;
+}
+
+export interface AdminAvailabilityResponse {
+  date: string;
+  slots: AdminAvailabilitySlot[];
 }

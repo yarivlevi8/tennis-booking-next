@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getBlockedTimesForDate } from "@/lib/availabilityRepository";
 import {
   createBookingInDb,
   DuplicateBookingError,
@@ -68,9 +69,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const bookedTimes = await getBookedTimesForDate(date);
+    const [blockedTimes, bookedTimes] = await Promise.all([
+      getBlockedTimesForDate(date),
+      getBookedTimesForDate(date),
+    ]);
 
-    if (bookedTimes.includes(time)) {
+    if (blockedTimes.includes(time) || bookedTimes.includes(time)) {
       return jsonError("Selected slot is not available", 409);
     }
 
